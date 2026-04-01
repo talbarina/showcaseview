@@ -54,6 +54,12 @@ class OverlayManager {
   /// Current overlay entry being displayed
   OverlayEntry? _overlayEntry;
 
+  /// Controls the fade-in / fade-out animation of the overlay.
+  AnimationController? _fadeController;
+
+  /// Duration of the overlay fade animation.
+  static const _fadeDuration = Duration(milliseconds: 200);
+
   /// Flag to determine if overlay should be shown
   var _shouldShow = false;
 
@@ -98,6 +104,7 @@ class OverlayManager {
   /// * [scope] - The scope to dispose overlays for
   void dispose({required String scope}) {
     if (!_isShowing || _currentScope != scope) return;
+    _disposeFadeController();
     _hide();
   }
 
@@ -111,15 +118,29 @@ class OverlayManager {
       _rebuild();
       return;
     }
-    // Create the overlay.
+    // Create the fade controller using overlayState as TickerProvider.
+    _disposeFadeController();
+    _fadeController = AnimationController(
+      vsync: overlayState!,
+      duration: _fadeDuration,
+    );
+    // Create and insert the overlay entry.
     _overlayEntry = OverlayEntry(builder: overlayBuilder);
     overlayState?.insert(_overlayEntry!);
+    // Animate in.
+    _fadeController!.forward();
   }
 
-  /// Removes and clears the current overlay entry.
-  void _hide() {
+  /// Removes and clears the current overlay entry with a fade-out animation.
+  Future<void> _hide() async {
+    // Animate out before removing.
+    final controller = _fadeController;
+    if (controller != null && controller.isCompleted) {
+      await controller.reverse();
+    }
     _overlayEntry?.remove();
     _overlayEntry = null;
+    _disposeFadeController();
   }
 
   /// Synchronizes the overlay visibility with the showcase manager state.
@@ -213,7 +234,7 @@ class OverlayManager {
 
     // Wrap with other inherited widgets to maintain showcase's context's
     // inherited values.
-    return Directionality(
+    final content = Directionality(
       textDirection: inheritedData.textDirection,
       child: MediaQuery(
         data: inheritedData.mediaQuery,
@@ -223,6 +244,12 @@ class OverlayManager {
         ),
       ),
     );
+
+    // Wrap with fade animation if available.
+    if (_fadeController != null) {
+      return FadeTransition(opacity: _fadeController!, child: content);
+    }
+    return content;
   }
 
   /// Extracts and returns linked showcase data from controllers.
@@ -240,4 +267,10 @@ class OverlayManager {
 
   /// Forces the overlay entry to rebuild
   void _rebuild() => _overlayEntry?.markNeedsBuild();
+
+  /// Safely disposes the fade animation controller.
+  void _disposeFadeController() {
+    _fadeController?.dispose();
+    _fadeController = null;
+  }
 }
