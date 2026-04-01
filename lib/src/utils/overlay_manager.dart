@@ -60,9 +60,6 @@ class OverlayManager {
   /// Duration of the overlay fade-in / fade-out animation.
   static const _fadeDuration = Duration(milliseconds: 200);
 
-  /// Duration of the crossfade between showcase steps.
-  static const _stepTransitionDuration = Duration(milliseconds: 250);
-
   /// Flag to determine if overlay should be shown
   var _shouldShow = false;
 
@@ -202,8 +199,8 @@ class OverlayManager {
     );
 
     final overlayChild = Stack(
+      key: ValueKey(firstController.id),
       children: [
-        // Scrim + cutout — stays constant, no animation.
         GestureDetector(
           onTap: firstController.handleBarrierTap,
           child: ClipPath(
@@ -221,16 +218,7 @@ class OverlayManager {
                   ),
           ),
         ),
-        // Tooltip widgets — crossfade between steps.
-        AnimatedSwitcher(
-          duration: _stepTransitionDuration,
-          child: Stack(
-            key: ValueKey(firstController.id),
-            children: [
-              ...controllers.expand((object) => object.tooltipWidgets),
-            ],
-          ),
-        ),
+        ...controllers.expand((object) => object.tooltipWidgets),
       ],
     );
 
@@ -274,8 +262,28 @@ class OverlayManager {
     ];
   }
 
-  /// Forces the overlay entry to rebuild
-  void _rebuild() => _overlayEntry?.markNeedsBuild();
+  /// Whether a step transition animation is currently in progress.
+  bool _isTransitioning = false;
+
+  /// Forces the overlay entry to rebuild.
+  ///
+  /// When a fade controller is active and completed (i.e., between steps),
+  /// the rebuild is wrapped in a fade-out → update → fade-in sequence so
+  /// the cutout and tooltip animate smoothly.
+  void _rebuild() {
+    final controller = _fadeController;
+    if (controller != null && controller.isCompleted && !_isTransitioning) {
+      _isTransitioning = true;
+      controller.reverse().then((_) {
+        _overlayEntry?.markNeedsBuild();
+        controller.forward().then((_) {
+          _isTransitioning = false;
+        });
+      });
+    } else if (!_isTransitioning) {
+      _overlayEntry?.markNeedsBuild();
+    }
+  }
 
   /// Safely disposes the fade animation controller.
   void _disposeFadeController() {
