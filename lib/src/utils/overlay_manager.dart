@@ -30,6 +30,7 @@ import '../showcase/showcase_controller.dart';
 import '../showcase/showcase_service.dart';
 import '../showcase/showcase_view.dart';
 import 'extensions.dart';
+import 'linked_showcase_data_model_tween.dart';
 import 'shape_clipper.dart';
 
 /// A singleton manager class responsible for displaying and controlling
@@ -54,11 +55,32 @@ class OverlayManager {
   /// Current overlay entry being displayed
   OverlayEntry? _overlayEntry;
 
-  /// Controls the fade-in / fade-out animation of the overlay.
+  /// Controls the fade-in / fade-out of the entire overlay (tour start/end).
   AnimationController? _fadeController;
 
-  /// Duration of the overlay fade-in / fade-out animation.
+  /// Controls the fade of tooltip widgets between steps.
+  AnimationController? _stepFadeController;
+
+  /// Controls the cutout morph animation between steps.
+  AnimationController? _clipMorphController;
+
+  /// Clip data for the previous step (source of morph animation).
+  List<LinkedShowcaseDataModel> _previousClipData = [];
+
+  /// Clip data for the current step (target of morph animation).
+  List<LinkedShowcaseDataModel> _currentClipData = [];
+
+  /// Whether a step transition is in progress.
+  bool _isTransitioning = false;
+
+  /// Duration of the overlay fade-in / fade-out animation (tour start/end).
   static const _fadeDuration = Duration(milliseconds: 200);
+
+  /// Duration of the tooltip fade between steps.
+  static const _stepFadeDuration = Duration(milliseconds: 150);
+
+  /// Duration of the cutout morph animation between steps.
+  static const _clipMorphDuration = Duration(milliseconds: 300);
 
   /// Flag to determine if overlay should be shown
   var _shouldShow = false;
@@ -104,8 +126,8 @@ class OverlayManager {
   /// * [scope] - The scope to dispose overlays for
   void dispose({required String scope}) {
     if (!_isShowing || _currentScope != scope) return;
-    _disposeFadeController();
-    _hide();
+    _disposeControllers();
+    _removeOverlay();
   }
 
   /// Shows the overlay using the provided builder.
@@ -118,16 +140,35 @@ class OverlayManager {
       _rebuild();
       return;
     }
-    // Create the fade controller using overlayState as TickerProvider.
-    _disposeFadeController();
+
+    final vsync = overlayState!;
+
+    // Create all animation controllers.
+    _disposeControllers();
     _fadeController = AnimationController(
-      vsync: overlayState!,
+      vsync: vsync,
       duration: _fadeDuration,
     );
+    _stepFadeController = AnimationController(
+      vsync: vsync,
+      duration: _stepFadeDuration,
+      value: 1.0, // start fully visible
+    );
+    _clipMorphController = AnimationController(
+      vsync: vsync,
+      duration: _clipMorphDuration,
+      value: 1.0, // start at end position (no morph on first step)
+    );
+
+    // Reset clip data.
+    _previousClipData = [];
+    _currentClipData = [];
+
     // Create and insert the overlay entry.
     _overlayEntry = OverlayEntry(builder: overlayBuilder);
     overlayState?.insert(_overlayEntry!);
-    // Animate in.
+
+    // Animate the overlay in.
     _fadeController!.forward();
   }
 
@@ -138,9 +179,14 @@ class OverlayManager {
     if (controller != null && controller.isCompleted) {
       await controller.reverse();
     }
+    _removeOverlay();
+    _disposeControllers();
+  }
+
+  /// Removes the overlay entry without animation.
+  void _removeOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
-    _disposeFadeController();
   }
 
   /// Synchronizes the overlay visibility with the showcase manager state.
@@ -192,21 +238,39 @@ class OverlayManager {
       }
     }
 
+    // Update current clip data from controllers.
+    _currentClipData = _getLinkedShowcasesData(controllers);
+
+    // If previous clip data is empty (first step), use current.
+    if (_previousClipData.isEmpty) {
+      _previousClipData = _currentClipData;
+    }
+
     final backgroundContainer = ColoredBox(
       color: firstShowcaseConfig.overlayColor
           .reduceOpacity(firstShowcaseConfig.overlayOpacity),
       child: const Align(),
     );
 
+    // Build the overlay stack with separate animation layers.
     final overlayChild = Stack(
-      key: ValueKey(firstController.id),
       children: [
+        // Layer 1: Scrim + blur + cutout — animated clip morph, no fade.
         GestureDetector(
           onTap: firstController.handleBarrierTap,
-          child: ClipPath(
-            clipper: ShapeClipper(
-              linkedObjectData: _getLinkedShowcasesData(controllers),
-            ),
+          child: AnimatedBuilder(
+            animation: _clipMorphController!,
+            builder: (context, child) {
+              final interpolatedData = lerpLinkedShowcaseDataList(
+                _previousClipData,
+                _currentClipData,
+                _clipMorphController!.value,
+              );
+              return ClipPath(
+                clipper: ShapeClipper(linkedObjectData: interpolatedData),
+                child: child,
+              );
+            },
             child: firstController.blur <= 0.2
                 ? backgroundContainer
                 : BackdropFilter(
@@ -218,7 +282,15 @@ class OverlayManager {
                   ),
           ),
         ),
-        ...controllers.expand((object) => object.tooltipWidgets),
+        // Layer 2: Tooltip widgets — step fade only.
+        FadeTransition(
+          opacity: _stepFadeController!,
+          child: Stack(
+            children: [
+              ...controllers.expand((object) => object.tooltipWidgets),
+            ],
+          ),
+        ),
       ],
     );
 
@@ -242,7 +314,7 @@ class OverlayManager {
       ),
     );
 
-    // Wrap with fade animation if available.
+    // Wrap with fade animation for tour start/end.
     if (_fadeController != null) {
       return FadeTransition(opacity: _fadeController!, child: content);
     }
@@ -262,22 +334,33 @@ class OverlayManager {
     ];
   }
 
-  /// Whether a step transition animation is currently in progress.
-  bool _isTransitioning = false;
-
   /// Forces the overlay entry to rebuild.
   ///
-  /// When a fade controller is active and completed (i.e., between steps),
-  /// the rebuild is wrapped in a fade-out → update → fade-in sequence so
-  /// the cutout and tooltip animate smoothly.
+  /// When animation controllers are active, the rebuild is wrapped in a
+  /// step transition: fade out tooltips → morph cutout → fade in tooltips.
+  /// The scrim and blur stay constant throughout.
   void _rebuild() {
-    final controller = _fadeController;
-    if (controller != null && controller.isCompleted && !_isTransitioning) {
+    final stepFade = _stepFadeController;
+    final clipMorph = _clipMorphController;
+
+    if (stepFade != null &&
+        clipMorph != null &&
+        stepFade.isCompleted &&
+        !_isTransitioning) {
       _isTransitioning = true;
-      controller.reverse().then((_) {
+
+      // 1. Fade out tooltips.
+      stepFade.reverse().then((_) {
+        // 2. Snapshot the old clip data and rebuild to get new data.
+        _previousClipData = List.of(_currentClipData);
         _overlayEntry?.markNeedsBuild();
-        controller.forward().then((_) {
-          _isTransitioning = false;
+
+        // 3. Morph the cutout from old to new position.
+        clipMorph.forward(from: 0.0).then((_) {
+          // 4. Fade in new tooltips.
+          stepFade.forward().then((_) {
+            _isTransitioning = false;
+          });
         });
       });
     } else if (!_isTransitioning) {
@@ -285,9 +368,14 @@ class OverlayManager {
     }
   }
 
-  /// Safely disposes the fade animation controller.
-  void _disposeFadeController() {
+  /// Safely disposes all animation controllers.
+  void _disposeControllers() {
     _fadeController?.dispose();
     _fadeController = null;
+    _stepFadeController?.dispose();
+    _stepFadeController = null;
+    _clipMorphController?.dispose();
+    _clipMorphController = null;
+    _isTransitioning = false;
   }
 }
