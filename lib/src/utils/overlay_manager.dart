@@ -57,8 +57,11 @@ class OverlayManager {
   /// Controls the fade-in / fade-out animation of the overlay.
   AnimationController? _fadeController;
 
-  /// Duration of the overlay fade animation.
+  /// Duration of the overlay fade-in / fade-out animation.
   static const _fadeDuration = Duration(milliseconds: 200);
+
+  /// Duration of the crossfade between showcase steps.
+  static const _stepTransitionDuration = Duration(milliseconds: 250);
 
   /// Flag to determine if overlay should be shown
   var _shouldShow = false;
@@ -198,31 +201,34 @@ class OverlayManager {
       child: const Align(),
     );
 
-    final overlayChild = Stack(
-      // This key is used to force rebuild the overlay when needed.
-      // this key enables `_overlayEntry?.markNeedsBuild();` to detect that
-      // output of the builder has changed.
-      key: ValueKey(firstController.id),
-      children: [
-        GestureDetector(
-          onTap: firstController.handleBarrierTap,
-          child: ClipPath(
-            clipper: ShapeClipper(
-              linkedObjectData: _getLinkedShowcasesData(controllers),
-            ),
-            child: firstController.blur <= 0.2
-                ? backgroundContainer
-                : BackdropFilter(
-                    filter: ImageFilter.blur(
-                      sigmaX: firstController.blur,
-                      sigmaY: firstController.blur,
+    final overlayChild = AnimatedSwitcher(
+      duration: _stepTransitionDuration,
+      child: Stack(
+        // This key is used to force rebuild the overlay when needed.
+        // this key enables `_overlayEntry?.markNeedsBuild();` to detect that
+        // output of the builder has changed.
+        key: ValueKey(firstController.id),
+        children: [
+          GestureDetector(
+            onTap: firstController.handleBarrierTap,
+            child: ClipPath(
+              clipper: ShapeClipper(
+                linkedObjectData: _getLinkedShowcasesData(controllers),
+              ),
+              child: firstController.blur <= 0.2
+                  ? backgroundContainer
+                  : BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: firstController.blur,
+                        sigmaY: firstController.blur,
+                      ),
+                      child: backgroundContainer,
                     ),
-                    child: backgroundContainer,
-                  ),
+            ),
           ),
-        ),
-        ...controllers.expand((object) => object.tooltipWidgets),
-      ],
+          ...controllers.expand((object) => object.tooltipWidgets),
+        ],
+      ),
     );
 
     final inheritedData = firstController.inheritedData;
