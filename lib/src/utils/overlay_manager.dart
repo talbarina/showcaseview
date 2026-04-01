@@ -201,34 +201,37 @@ class OverlayManager {
       child: const Align(),
     );
 
-    final overlayChild = AnimatedSwitcher(
-      duration: _stepTransitionDuration,
-      child: Stack(
-        // This key is used to force rebuild the overlay when needed.
-        // this key enables `_overlayEntry?.markNeedsBuild();` to detect that
-        // output of the builder has changed.
-        key: ValueKey(firstController.id),
-        children: [
-          GestureDetector(
-            onTap: firstController.handleBarrierTap,
-            child: ClipPath(
-              clipper: ShapeClipper(
-                linkedObjectData: _getLinkedShowcasesData(controllers),
-              ),
-              child: firstController.blur <= 0.2
-                  ? backgroundContainer
-                  : BackdropFilter(
-                      filter: ImageFilter.blur(
-                        sigmaX: firstController.blur,
-                        sigmaY: firstController.blur,
-                      ),
-                      child: backgroundContainer,
-                    ),
+    final overlayChild = Stack(
+      children: [
+        // Scrim + cutout — stays constant, no animation.
+        GestureDetector(
+          onTap: firstController.handleBarrierTap,
+          child: ClipPath(
+            clipper: ShapeClipper(
+              linkedObjectData: _getLinkedShowcasesData(controllers),
             ),
+            child: firstController.blur <= 0.2
+                ? backgroundContainer
+                : BackdropFilter(
+                    filter: ImageFilter.blur(
+                      sigmaX: firstController.blur,
+                      sigmaY: firstController.blur,
+                    ),
+                    child: backgroundContainer,
+                  ),
           ),
-          ...controllers.expand((object) => object.tooltipWidgets),
-        ],
-      ),
+        ),
+        // Tooltip widgets — crossfade between steps.
+        AnimatedSwitcher(
+          duration: _stepTransitionDuration,
+          child: Stack(
+            key: ValueKey(firstController.id),
+            children: [
+              ...controllers.expand((object) => object.tooltipWidgets),
+            ],
+          ),
+        ),
+      ],
     );
 
     final inheritedData = firstController.inheritedData;
