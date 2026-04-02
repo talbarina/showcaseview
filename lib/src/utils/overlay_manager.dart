@@ -76,8 +76,9 @@ class OverlayManager {
   /// Whether a step transition is in progress.
   bool _isTransitioning = false;
 
-  /// Whether this is the first rebuild after showing (skip transition).
-  bool _isFirstRebuild = true;
+  /// Whether the overlay has fully faded in (step transitions are suppressed
+  /// until the initial fade-in completes to avoid a tooltip flash).
+  bool _initialFadeComplete = false;
 
   /// Duration of the overlay fade-in / fade-out animation (tour start/end).
   static const _fadeDuration = Duration(milliseconds: 200);
@@ -86,7 +87,7 @@ class OverlayManager {
   static const _stepFadeDuration = Duration(milliseconds: 150);
 
   /// Duration of the cutout morph animation between steps.
-  static const _clipMorphDuration = Duration(milliseconds: 200);
+  static const _clipMorphDuration = Duration(milliseconds: 125);
 
   /// Curve for the cutout morph animation.
   static const _clipMorphCurve = Curves.easeInOutCubic;
@@ -176,14 +177,16 @@ class OverlayManager {
     // Reset state.
     _previousClipData = [];
     _currentClipData = [];
-    _isFirstRebuild = true;
+    _initialFadeComplete = false;
 
     // Create and insert the overlay entry.
     _overlayEntry = OverlayEntry(builder: overlayBuilder);
     overlayState?.insert(_overlayEntry!);
 
-    // Animate the overlay in.
-    _fadeController!.forward();
+    // Animate the overlay in, then allow step transitions.
+    _fadeController!.forward().then((_) {
+      _initialFadeComplete = true;
+    });
   }
 
   /// Removes and clears the current overlay entry with a fade-out animation.
@@ -354,11 +357,10 @@ class OverlayManager {
   /// step transition: fade out tooltips → morph cutout → fade in tooltips.
   /// The scrim and blur stay constant throughout.
   void _rebuild() {
-    // Skip the animated transition on the very first rebuild after showing —
-    // the overlay is still fading in via _fadeController, so running the
-    // step transition would cause the tooltip to flash out and back in.
-    if (_isFirstRebuild) {
-      _isFirstRebuild = false;
+    // Skip the animated transition while the overlay is still fading in —
+    // running the step transition during the initial fade-in would cause
+    // the tooltip to flash out and back in.
+    if (!_initialFadeComplete) {
       _overlayEntry?.markNeedsBuild();
       return;
     }
@@ -402,6 +404,6 @@ class OverlayManager {
     _clipMorphController?.dispose();
     _clipMorphController = null;
     _isTransitioning = false;
-    _isFirstRebuild = true;
+    _initialFadeComplete = false;
   }
 }
