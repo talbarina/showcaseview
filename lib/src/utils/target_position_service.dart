@@ -23,6 +23,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 class TargetPositionService {
   /// A service class that handles positioning calculations for showcase
@@ -53,6 +54,13 @@ class TargetPositionService {
 
   Offset? _boxOffset;
 
+  /// The target's bounding rect after applying all ancestor transforms
+  /// (e.g., FittedBox scaling). This gives the actual on-screen size.
+  Rect? _transformedRect;
+
+  /// The on-screen size of the target after ancestor transforms.
+  Size get _size => _transformedRect?.size ?? renderBox?.size ?? Size.zero;
+
   // Caching fields to avoid redundant calculations
   Rect? _cachedRect;
   Rect? _cachedRectForOverlay;
@@ -75,8 +83,8 @@ class TargetPositionService {
       return _cachedRect!;
     }
 
-    final topLeft = renderBox!.size.topLeft(_boxOffset!);
-    final bottomRight = renderBox!.size.bottomRight(_boxOffset!);
+    final topLeft = _size.topLeft(_boxOffset!);
+    final bottomRight = _size.bottomRight(_boxOffset!);
     final leftDx = topLeft.dx - padding.left;
     final leftDy = topLeft.dy - padding.top;
 
@@ -105,8 +113,8 @@ class TargetPositionService {
       return _cachedRectForOverlay!;
     }
 
-    final topLeft = renderBox!.size.topLeft(_boxOffset!);
-    final bottomRight = renderBox!.size.bottomRight(_boxOffset!);
+    final topLeft = _size.topLeft(_boxOffset!);
+    final bottomRight = _size.bottomRight(_boxOffset!);
 
     _dimensionsChanged = false;
     return _cachedRectForOverlay = Rect.fromLTRB(
@@ -120,28 +128,28 @@ class TargetPositionService {
   /// Gets the bottom edge position of the target widget with padding.
   double getBottom() {
     if (_checkBoxOrOffsetIsNull(checkDy: true)) return padding.bottom;
-    final bottomRight = renderBox!.size.bottomRight(_boxOffset!);
+    final bottomRight = _size.bottomRight(_boxOffset!);
     return bottomRight.dy + padding.bottom;
   }
 
   /// Gets the top edge position of the target widget with padding.
   double getTop() {
     if (_checkBoxOrOffsetIsNull(checkDy: true)) return -padding.top;
-    final topLeft = renderBox!.size.topLeft(_boxOffset!);
+    final topLeft = _size.topLeft(_boxOffset!);
     return topLeft.dy - padding.top;
   }
 
   /// Gets the left edge position of the target widget with padding.
   double getLeft() {
     if (_checkBoxOrOffsetIsNull(checkDx: true)) return -padding.left;
-    final topLeft = renderBox!.size.topLeft(_boxOffset!);
+    final topLeft = _size.topLeft(_boxOffset!);
     return topLeft.dx - padding.left;
   }
 
   /// Gets the right edge position of the target widget with padding.
   double getRight() {
     if (_checkBoxOrOffsetIsNull(checkDx: true)) return padding.right;
-    final bottomRight = renderBox!.size.bottomRight(_boxOffset!);
+    final bottomRight = _size.bottomRight(_boxOffset!);
     return bottomRight.dx + padding.right;
   }
 
@@ -156,6 +164,8 @@ class TargetPositionService {
 
   /// Gets the top-left corner of the render box in global coordinates.
   Offset topLeft() {
+    if (_transformedRect != null) return _transformedRect!.topLeft;
+
     final box = renderBox;
     if (box == null) return Offset.zero;
 
@@ -165,19 +175,25 @@ class TargetPositionService {
   }
 
   /// Gets the center position of the target widget in global coordinates.
-  Offset getOffset() => renderBox?.size.center(topLeft()) ?? Offset.zero;
+  Offset getOffset() => _size.center(topLeft());
 
   /// Calculates and stores the global position of the render box.
   ///
-  /// This method translates the widget's local coordinates to global screen
-  /// coordinates, optionally relative to a specified ancestor widget.
+  /// Uses [MatrixUtils.transformRect] to account for ancestor transforms
+  /// (e.g., [FittedBox] scaling). This gives the actual on-screen position
+  /// and size rather than the raw layout dimensions.
   void _getRenderBoxOffset() {
     if (renderBox == null) return;
 
-    _boxOffset = renderBox?.localToGlobal(
-      Offset.zero,
-      ancestor: rootRenderObject,
+    // Compute the full transform from the target to the root overlay.
+    // This accounts for FittedBox, Transform, and any other ancestor
+    // that applies a paint transform.
+    final matrix = renderBox!.getTransformTo(rootRenderObject);
+    _transformedRect = MatrixUtils.transformRect(
+      matrix,
+      Offset.zero & renderBox!.size,
     );
+    _boxOffset = _transformedRect!.topLeft;
   }
 
   /// Checks if the render box or its offset are null or have invalid

@@ -53,6 +53,15 @@ typedef OnDismissCallback = void Function(
   GlobalKey? dismissedAt,
 );
 
+/// Async callback type for preparing before a showcase step starts.
+///
+/// This callback is awaited before the next step begins, allowing
+/// asynchronous preparation (e.g., opening a drawer to mount a target widget).
+typedef OnBeforeStartCallback = Future<void> Function(
+  int? showcaseIndex,
+  GlobalKey key,
+);
+
 class ShowcaseView {
   /// Creates and registers a [ShowcaseView] with the specified [scope].
   ///
@@ -66,6 +75,7 @@ class ShowcaseView {
     this.onFinish,
     this.onComplete,
     this.onDismiss,
+    this.onBeforeStart,
     this.enableShowcase = true,
     this.autoPlay = false,
     this.autoPlayDelay = Constants.defaultAutoPlayDelay,
@@ -110,6 +120,10 @@ class ShowcaseView {
 
   /// Triggered every time on completion of each showcase.
   final OnShowcaseCallback? onComplete;
+
+  /// Awaited before each showcase step starts. Allows asynchronous preparation
+  /// such as opening a drawer to mount a target widget before it is needed.
+  OnBeforeStartCallback? onBeforeStart;
 
   /// Whether all showcases will auto sequentially start
   /// having time interval of [autoPlayDelay].
@@ -371,7 +385,7 @@ class ShowcaseView {
       ShowcaseProgressType.backward => _activeWidgetId! - 1,
     };
     _onComplete().then(
-      (_) {
+      (_) async {
         if (!_mounted) return;
         // Update active widget ID before starting the next showcase
         _activeWidgetId = id;
@@ -383,6 +397,9 @@ class ShowcaseView {
             callback.call();
           }
         } else {
+          // Allow the app to prepare asynchronously for the next step
+          // (e.g., opening a drawer to mount the target widget).
+          await onBeforeStart?.call(_activeWidgetId, _ids![_activeWidgetId!]);
           // Add a short delay before starting the next showcase to ensure proper state update
           // Then start the new showcase
           Future.microtask(_onStart);

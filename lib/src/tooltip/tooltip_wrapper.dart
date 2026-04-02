@@ -169,8 +169,15 @@ class _ToolTipWrapperState extends State<ToolTipWrapper>
     // but won't happen in general cases
     if (box == null || !box.attached) return const SizedBox.shrink();
 
-    final targetPosition = box.localToGlobal(Offset.zero);
-    final targetSize = box.size;
+    // Use transform-aware measurement to handle ancestor transforms
+    // (e.g., FittedBox scaling) that change the on-screen size.
+    final matrix = box.getTransformTo(null);
+    final targetRect = MatrixUtils.transformRect(
+      matrix,
+      Offset.zero & box.size,
+    );
+    final targetPosition = targetRect.topLeft;
+    final targetSize = targetRect.size;
 
     final defaultToolTipWidget = widget.container != null
         ? MouseRegion(
