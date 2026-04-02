@@ -64,6 +64,9 @@ class OverlayManager {
   /// Controls the cutout morph animation between steps.
   AnimationController? _clipMorphController;
 
+  /// Curved version of [_clipMorphController] for smooth easing.
+  Animation<double>? _clipMorphAnimation;
+
   /// Clip data for the previous step (source of morph animation).
   List<LinkedShowcaseDataModel> _previousClipData = [];
 
@@ -73,6 +76,9 @@ class OverlayManager {
   /// Whether a step transition is in progress.
   bool _isTransitioning = false;
 
+  /// Whether this is the first rebuild after showing (skip transition).
+  bool _isFirstRebuild = true;
+
   /// Duration of the overlay fade-in / fade-out animation (tour start/end).
   static const _fadeDuration = Duration(milliseconds: 200);
 
@@ -80,7 +86,10 @@ class OverlayManager {
   static const _stepFadeDuration = Duration(milliseconds: 150);
 
   /// Duration of the cutout morph animation between steps.
-  static const _clipMorphDuration = Duration(milliseconds: 300);
+  static const _clipMorphDuration = Duration(milliseconds: 200);
+
+  /// Curve for the cutout morph animation.
+  static const _clipMorphCurve = Curves.easeInOutCubic;
 
   /// Flag to determine if overlay should be shown
   var _shouldShow = false;
@@ -159,10 +168,15 @@ class OverlayManager {
       duration: _clipMorphDuration,
       value: 1.0, // start at end position (no morph on first step)
     );
+    _clipMorphAnimation = CurvedAnimation(
+      parent: _clipMorphController!,
+      curve: _clipMorphCurve,
+    );
 
-    // Reset clip data.
+    // Reset state.
     _previousClipData = [];
     _currentClipData = [];
+    _isFirstRebuild = true;
 
     // Create and insert the overlay entry.
     _overlayEntry = OverlayEntry(builder: overlayBuilder);
@@ -259,12 +273,12 @@ class OverlayManager {
         GestureDetector(
           onTap: firstController.handleBarrierTap,
           child: AnimatedBuilder(
-            animation: _clipMorphController!,
+            animation: _clipMorphAnimation!,
             builder: (context, child) {
               final interpolatedData = lerpLinkedShowcaseDataList(
                 _previousClipData,
                 _currentClipData,
-                _clipMorphController!.value,
+                _clipMorphAnimation!.value,
               );
               return ClipPath(
                 clipper: ShapeClipper(linkedObjectData: interpolatedData),
@@ -340,6 +354,15 @@ class OverlayManager {
   /// step transition: fade out tooltips → morph cutout → fade in tooltips.
   /// The scrim and blur stay constant throughout.
   void _rebuild() {
+    // Skip the animated transition on the very first rebuild after showing —
+    // the overlay is still fading in via _fadeController, so running the
+    // step transition would cause the tooltip to flash out and back in.
+    if (_isFirstRebuild) {
+      _isFirstRebuild = false;
+      _overlayEntry?.markNeedsBuild();
+      return;
+    }
+
     final stepFade = _stepFadeController;
     final clipMorph = _clipMorphController;
 
@@ -374,8 +397,11 @@ class OverlayManager {
     _fadeController = null;
     _stepFadeController?.dispose();
     _stepFadeController = null;
+    _clipMorphAnimation?.dispose();
+    _clipMorphAnimation = null;
     _clipMorphController?.dispose();
     _clipMorphController = null;
     _isTransitioning = false;
+    _isFirstRebuild = true;
   }
 }
