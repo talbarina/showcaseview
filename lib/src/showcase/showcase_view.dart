@@ -394,10 +394,9 @@ class ShowcaseView {
     _onComplete().then(
       (_) async {
         if (!_mounted) return;
-        // Update active widget ID before starting the next showcase
-        _activeWidgetId = id;
 
-        if (_activeWidgetId! >= _ids!.length) {
+        if (id >= _ids!.length) {
+          _activeWidgetId = id;
           _cleanupAfterSteps();
           onFinish?.call();
           for (final callback in _onFinishCallbacks) {
@@ -406,7 +405,11 @@ class ShowcaseView {
         } else {
           // Allow the app to prepare asynchronously for the next step
           // (e.g., opening a drawer to mount the target widget).
-          await onBeforeStart?.call(_activeWidgetId, _ids![_activeWidgetId!]);
+          // The active widget ID is set AFTER this callback so that any
+          // rebuilds of the target Showcase during preparation (e.g., drawer
+          // animation) don't trigger overlay updates with stale positions.
+          await onBeforeStart?.call(id, _ids![id]);
+          _activeWidgetId = id;
           // Add a short delay before starting the next showcase to ensure proper state update
           // Then start the new showcase
           Future.microtask(_onStart);
