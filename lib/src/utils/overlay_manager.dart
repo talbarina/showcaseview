@@ -399,7 +399,6 @@ class OverlayManager {
     _fadeController = null;
     _stepFadeController?.dispose();
     _stepFadeController = null;
-    _clipMorphAnimation?.dispose();
     _clipMorphAnimation = null;
     _clipMorphController?.dispose();
     _clipMorphController = null;
