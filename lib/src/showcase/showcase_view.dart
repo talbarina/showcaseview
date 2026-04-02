@@ -125,6 +125,13 @@ class ShowcaseView {
   /// such as opening a drawer to mount a target widget before it is needed.
   OnBeforeStartCallback? onBeforeStart;
 
+  /// Tells the overlay to skip the clip morph animation for the next step
+  /// transition, jumping directly to the new cutout position.
+  ///
+  /// Call this inside [onBeforeStart] when the target widget has moved to a
+  /// completely different screen area (e.g., after opening a drawer).
+  void skipNextClipMorph() => OverlayManager.instance.skipNextClipMorph();
+
   /// Whether all showcases will auto sequentially start
   /// having time interval of [autoPlayDelay].
   bool autoPlay;

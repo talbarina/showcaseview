@@ -67,6 +67,10 @@ class OverlayManager {
   /// Curved version of [_clipMorphController] for smooth easing.
   Animation<double>? _clipMorphAnimation;
 
+  /// When true, the next step transition skips the clip morph animation and
+  /// jumps directly to the new cutout position.
+  bool _skipNextClipMorph = false;
+
   /// Clip data for the previous step (source of morph animation).
   List<LinkedShowcaseDataModel> _previousClipData = [];
 
@@ -100,6 +104,16 @@ class OverlayManager {
 
   /// Returns whether an overlay is currently being displayed
   bool get _isShowing => _overlayEntry != null;
+
+  /// Tells the overlay manager to skip the clip morph animation for the next
+  /// step transition, jumping directly to the new cutout position.
+  ///
+  /// Useful when the target widget moves to a completely different area of the
+  /// screen (e.g., after opening a drawer) and a morph animation from the
+  /// previous position would look like a visual artifact.
+  void skipNextClipMorph() {
+    _skipNextClipMorph = true;
+  }
 
   /// Updates the overlay visibility based on the provided showcase view.
   ///
@@ -374,14 +388,23 @@ class OverlayManager {
         !_isTransitioning) {
       _isTransitioning = true;
 
+      final shouldSkipMorph = _skipNextClipMorph;
+      _skipNextClipMorph = false;
+
       // 1. Fade out tooltips.
       stepFade.reverse().then((_) {
         // 2. Snapshot the old clip data and rebuild to get new data.
         _previousClipData = List.of(_currentClipData);
         _overlayEntry?.markNeedsBuild();
 
-        // 3. Morph the cutout to the new position (parallel with fade-in).
-        clipMorph.forward(from: 0.0);
+        if (shouldSkipMorph) {
+          // Jump directly to the new position (no morph animation).
+          _previousClipData = List.of(_currentClipData);
+          clipMorph.value = 1.0;
+        } else {
+          // 3. Morph the cutout to the new position (parallel with fade-in).
+          clipMorph.forward(from: 0.0);
+        }
 
         // 4. Fade in new tooltips (runs alongside the morph).
         stepFade.forward().then((_) {
