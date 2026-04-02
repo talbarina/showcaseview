@@ -354,16 +354,16 @@ class OverlayManager {
   /// Forces the overlay entry to rebuild.
   ///
   /// When animation controllers are active, the rebuild is wrapped in a
-  /// step transition: fade out tooltips → morph cutout → fade in tooltips.
+  /// step transition: fade out tooltips, morph cutout, then fade in tooltips.
   /// The scrim and blur stay constant throughout.
   void _rebuild() {
-    // Skip the animated transition while the overlay is still fading in —
-    // running the step transition during the initial fade-in would cause
-    // the tooltip to flash out and back in.
-    if (!_initialFadeComplete) {
-      _overlayEntry?.markNeedsBuild();
-      return;
-    }
+    // During the initial overlay fade-in, do nothing. The overlay was just
+    // inserted with correct data in _show(). Calling markNeedsBuild() here
+    // would trigger _getBuilder() → updateControllerData() →
+    // _buildOverlayOnTarget(), which recreates ToolTipWrapper widgets. If
+    // Flutter's reconciliation creates a new _ToolTipWrapperState, its
+    // _scaleAnimationController restarts from 0, causing a visible flash.
+    if (!_initialFadeComplete) return;
 
     final stepFade = _stepFadeController;
     final clipMorph = _clipMorphController;
@@ -380,12 +380,12 @@ class OverlayManager {
         _previousClipData = List.of(_currentClipData);
         _overlayEntry?.markNeedsBuild();
 
-        // 3. Morph the cutout from old to new position.
-        clipMorph.forward(from: 0.0).then((_) {
-          // 4. Fade in new tooltips.
-          stepFade.forward().then((_) {
-            _isTransitioning = false;
-          });
+        // 3. Morph the cutout to the new position (parallel with fade-in).
+        clipMorph.forward(from: 0.0);
+
+        // 4. Fade in new tooltips (runs alongside the morph).
+        stepFade.forward().then((_) {
+          _isTransitioning = false;
         });
       });
     } else if (!_isTransitioning) {
