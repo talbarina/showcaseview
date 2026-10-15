@@ -393,7 +393,8 @@ class ShowcaseView {
     };
     _onComplete().then(
       (_) async {
-        if (!_mounted) return;
+        // The tour may have been dismissed while the step animated out.
+        if (!_mounted || _ids == null) return;
 
         if (id >= _ids!.length) {
           _activeWidgetId = id;
@@ -409,6 +410,8 @@ class ShowcaseView {
           // rebuilds of the target Showcase during preparation (e.g., drawer
           // animation) don't trigger overlay updates with stale positions.
           await onBeforeStart?.call(id, _ids![id]);
+          // The tour may have been dismissed while the app prepared the step.
+          if (!_mounted || _ids == null) return;
           _activeWidgetId = id;
           // Add a short delay before starting the next showcase to ensure proper state update
           // Then start the new showcase
