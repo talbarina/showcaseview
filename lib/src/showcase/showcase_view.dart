@@ -86,6 +86,7 @@ class ShowcaseView {
     this.disableScaleAnimation = false,
     this.disableMovingAnimation = false,
     this.blurValue = 0,
+    this.keepTooltipInSafeArea = false,
     this.globalTooltipActionConfig,
     this.globalTooltipActions,
     this.globalFloatingActionWidget,
@@ -158,6 +159,13 @@ class ShowcaseView {
 
   /// The overlay blur used by showcase.
   double blurValue;
+
+  /// Whether tooltips stay clear of the screen areas covered by system UI
+  /// (status bar, navigation bar, display cutouts and the keyboard), on top
+  /// of each showcase's tooltip margin.
+  ///
+  /// When false, tooltips may be placed anywhere on the screen.
+  bool keepTooltipInSafeArea;
 
   /// Whether to enable auto scroll as to bring the target widget in the
   /// viewport.

@@ -46,6 +46,7 @@ class _RenderAnimationDelegate extends _RenderPositionDelegate {
     required super.gapBetweenContentAndAction,
     required super.toolTipSlideEndDistance,
     required super.screenEdgePadding,
+    required super.safeAreaPadding,
     required super.targetPadding,
     required super.showcaseOffset,
     required super.targetTooltipGap,

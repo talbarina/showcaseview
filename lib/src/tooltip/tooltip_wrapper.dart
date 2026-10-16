@@ -179,6 +179,12 @@ class _ToolTipWrapperState extends State<ToolTipWrapper>
     final targetPosition = targetRect.topLeft;
     final targetSize = targetRect.size;
 
+    final screenSize =
+        widget.showcaseController.rootWidgetSize ?? MediaQuery.sizeOf(context);
+    final showcaseOffset = widget.showcaseController.rootRenderObject
+            ?.localToGlobal(Offset.zero) ??
+        Offset.zero;
+
     final defaultToolTipWidget = widget.container != null
         ? MouseRegion(
             cursor: widget.onTooltipTap == null
@@ -232,8 +238,7 @@ class _ToolTipWrapperState extends State<ToolTipWrapper>
         targetPosition: targetPosition,
         targetSize: targetSize,
         position: widget.tooltipPosition,
-        screenSize: widget.showcaseController.rootWidgetSize ??
-            MediaQuery.sizeOf(context),
+        screenSize: screenSize,
         hasArrow: widget.showArrow,
         targetPadding: widget.targetPadding,
         scaleAlignment: widget.scaleAnimationAlignment,
@@ -244,9 +249,8 @@ class _ToolTipWrapperState extends State<ToolTipWrapper>
         gapBetweenContentAndAction:
             widget.tooltipActionConfig.gapBetweenContentAndAction,
         screenEdgePadding: widget.toolTipMargin,
-        showcaseOffset: widget.showcaseController.rootRenderObject
-                ?.localToGlobal(Offset.zero) ??
-            Offset.zero,
+        safeAreaPadding: _safeAreaPadding(screenSize, showcaseOffset),
+        showcaseOffset: showcaseOffset,
         targetTooltipGap: widget.targetTooltipGap,
         children: [
           // We have to use UniqueKey here to avoid the issue with the
@@ -279,6 +283,43 @@ class _ToolTipWrapperState extends State<ToolTipWrapper>
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// Returns how far system UI reaches into each edge of the showcase root
+  /// (sized [rootSize], at [rootOffset] on screen), or zero when
+  /// [ShowcaseView.keepTooltipInSafeArea] is off.
+  ///
+  /// Reads the view directly: the showcase's own [MediaQuery] may have had
+  /// its padding removed by an ancestor (a list or a drawer, for example).
+  EdgeInsets _safeAreaPadding(Size rootSize, Offset rootOffset) {
+    if (!widget.showcaseController.showcaseView.keepTooltipInSafeArea) {
+      return EdgeInsets.zero;
+    }
+
+    final view = MediaQueryData.fromView(View.of(context));
+
+    // The system UI covering each screen edge: the bars and cutouts, or the
+    // keyboard when it reaches further
+    final covered = EdgeInsets.fromLTRB(
+      max(view.viewPadding.left, view.viewInsets.left),
+      max(view.viewPadding.top, view.viewInsets.top),
+      max(view.viewPadding.right, view.viewInsets.right),
+      max(view.viewPadding.bottom, view.viewInsets.bottom),
+    );
+
+    // Shrink each edge by the root's distance from that screen edge
+    return EdgeInsets.fromLTRB(
+      max(0, covered.left - rootOffset.dx),
+      max(0, covered.top - rootOffset.dy),
+      max(
+        0,
+        covered.right - (view.size.width - rootOffset.dx - rootSize.width),
+      ),
+      max(
+        0,
+        covered.bottom - (view.size.height - rootOffset.dy - rootSize.height),
       ),
     );
   }

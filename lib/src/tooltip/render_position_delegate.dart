@@ -41,6 +41,9 @@ class _RenderPositionDelegate extends RenderBox
   /// [gapBetweenContentAndAction] - Spacing between tooltip content and
   /// action buttons
   /// [screenEdgePadding] - Minimum padding from screen edges
+  /// [safeAreaPadding] - Screen area covered by system UI (status bar,
+  /// navigation bar, display cutout, keyboard) that the tooltip must stay
+  /// clear of, on top of [screenEdgePadding]
   /// [targetPadding] - Padding around the target
   _RenderPositionDelegate({
     required this.targetPosition,
@@ -52,6 +55,7 @@ class _RenderPositionDelegate extends RenderBox
     required this.toolTipSlideEndDistance,
     required this.gapBetweenContentAndAction,
     required this.screenEdgePadding,
+    required this.safeAreaPadding,
     required this.targetPadding,
     required this.showcaseOffset,
     required this.targetTooltipGap,
@@ -67,6 +71,7 @@ class _RenderPositionDelegate extends RenderBox
   double toolTipSlideEndDistance;
   double gapBetweenContentAndAction;
   double screenEdgePadding;
+  EdgeInsets safeAreaPadding;
   EdgeInsets targetPadding;
   double targetTooltipGap;
 
@@ -129,6 +134,16 @@ class _RenderPositionDelegate extends RenderBox
       ? Constants.withArrowToolTipPadding
       : Constants.withOutArrowToolTipPadding;
 
+  // Minimum distance the tooltip keeps from each screen edge: the edge
+  // padding plus whatever system UI covers that edge
+  double get _leftEdgePadding => screenEdgePadding + safeAreaPadding.left;
+
+  double get _topEdgePadding => screenEdgePadding + safeAreaPadding.top;
+
+  double get _rightEdgePadding => screenEdgePadding + safeAreaPadding.right;
+
+  double get _bottomEdgePadding => screenEdgePadding + safeAreaPadding.bottom;
+
   // Override to make this object a repaint boundary for better raster thread performance
   @override
   bool get isRepaintBoundary => true;
@@ -171,11 +186,11 @@ class _RenderPositionDelegate extends RenderBox
     // Set size for this render object
     size = constraints.biggest;
 
-    final totalScreenEdgePadding = 2 * screenEdgePadding;
-
     // Get available screen dimensions
-    _availableScreenWidth = screenSize.width - totalScreenEdgePadding;
-    _availableScreenHeight = screenSize.height - totalScreenEdgePadding;
+    _availableScreenWidth =
+        screenSize.width - _leftEdgePadding - _rightEdgePadding;
+    _availableScreenHeight =
+        screenSize.height - _topEdgePadding - _bottomEdgePadding;
 
     // Reset layout variables
     _needToResize = _needToFlip = false;
@@ -295,10 +310,10 @@ class _RenderPositionDelegate extends RenderBox
     final offset = tooltipBoxManager.getOffset;
 
     // Check which boundary is exceeded
-    if (offset.dx < screenEdgePadding + showcaseOffset.dx) {
+    if (offset.dx < _leftEdgePadding + showcaseOffset.dx) {
       _handleLeftEdgeBoundary(tooltipHeight);
     } else if (offset.dx + tooltipBoxManager.size.width - showcaseOffset.dx >
-        screenSize.width - screenEdgePadding) {
+        screenSize.width - _rightEdgePadding) {
       _handleRightEdgeBoundary(tooltipHeight);
     }
   }
@@ -315,11 +330,14 @@ class _RenderPositionDelegate extends RenderBox
     final minWidth = isLeftEdge
         ? targetPosition.dx -
             showcaseOffset.dx -
-            screenEdgePadding -
+            _leftEdgePadding -
             targetTooltipGap -
             targetPadding.left -
             _getArrowPadding
-        : screenSize.width - screenEdgePadding - _xOffset - targetPadding.right;
+        : screenSize.width -
+            _rightEdgePadding -
+            _xOffset -
+            targetPadding.right;
 
     if ((isLeftEdge && tooltipPosition.isLeft) ||
         (!isLeftEdge && tooltipPosition.isRight)) {
@@ -335,7 +353,7 @@ class _RenderPositionDelegate extends RenderBox
           if (isLeftEdge) {
             // Resize tooltip to fit on left edge
             _maxWidth = minWidth;
-            _xOffset = screenEdgePadding + showcaseOffset.dx;
+            _xOffset = _leftEdgePadding + showcaseOffset.dx;
             _needToResize = true;
           } else {
             // Flip to opposite side
@@ -344,7 +362,7 @@ class _RenderPositionDelegate extends RenderBox
         case TooltipPosition.right:
           if (!isLeftEdge) {
             // Resize tooltip to fit on right edge
-            _maxWidth = screenSize.width - _xOffset - screenEdgePadding;
+            _maxWidth = screenSize.width - _xOffset - _rightEdgePadding;
             _needToResize = true;
           } else {
             // Flip to opposite side
@@ -362,16 +380,16 @@ class _RenderPositionDelegate extends RenderBox
       if (_maxWidth > _availableScreenWidth) {
         _maxWidth = _availableScreenWidth;
         _needToResize = true;
-        _xOffset = screenEdgePadding + showcaseOffset.dx;
+        _xOffset = _leftEdgePadding + showcaseOffset.dx;
       } else if (!isLeftEdge) {
         // Align to right edge
         _xOffset = screenSize.width -
-            screenEdgePadding -
+            _rightEdgePadding -
             _toolTipBoxSize.width +
             showcaseOffset.dx;
       } else {
         // Align to left edge
-        _xOffset = screenEdgePadding + showcaseOffset.dx;
+        _xOffset = _leftEdgePadding + showcaseOffset.dx;
       }
     }
   }
@@ -400,13 +418,13 @@ class _RenderPositionDelegate extends RenderBox
     final extraVerticalComponentHeight = _calculateExtraVerticalHeight();
 
     // Check which vertical boundary is exceeded
-    if (_yOffset < screenEdgePadding + showcaseOffset.dy) {
+    if (_yOffset < _topEdgePadding + showcaseOffset.dy) {
       _handleTopEdgeBoundary(tooltipHeight);
     } else if (_yOffset +
             _maxHeight +
             extraVerticalComponentHeight -
             showcaseOffset.dy >
-        screenSize.height - screenEdgePadding) {
+        screenSize.height - _bottomEdgePadding) {
       _handleBottomEdgeBoundary(tooltipHeight);
     }
   }
@@ -513,16 +531,16 @@ class _RenderPositionDelegate extends RenderBox
       // For left/right positions, ensure height fits
       if (_maxHeight > _availableScreenHeight) {
         _needToResize = true;
-        _yOffset = screenEdgePadding + showcaseOffset.dy;
+        _yOffset = _topEdgePadding + showcaseOffset.dy;
       } else if (!isTopEdge) {
         // Align to bottom edge (only for bottom boundary handling)
         _yOffset = screenSize.height -
-            screenEdgePadding -
+            _bottomEdgePadding -
             tooltipHeight +
             showcaseOffset.dy;
       } else {
         // Align to top edge (only for top boundary handling)
-        _yOffset = screenEdgePadding + showcaseOffset.dy;
+        _yOffset = _topEdgePadding + showcaseOffset.dy;
       }
     }
   }
@@ -546,13 +564,13 @@ class _RenderPositionDelegate extends RenderBox
 
     if (isTopEdge) {
       // Top edge - resize and keep at top
-      _maxHeight -= screenEdgePadding - _xOffset;
-      _yOffset = screenEdgePadding + showcaseOffset.dy;
+      _maxHeight -= _topEdgePadding - _xOffset;
+      _yOffset = _topEdgePadding + showcaseOffset.dy;
     } else {
       // Bottom edge - keep at bottom
       _yOffset = screenSize.height -
           showcaseOffset.dy -
-          screenEdgePadding -
+          _bottomEdgePadding -
           _maxHeight;
     }
   }
@@ -632,17 +650,24 @@ class _RenderPositionDelegate extends RenderBox
 
   /// Apply final boundary constraints to ensure tooltip stays on screen
   void _applyBoundaryConstraints(double tooltipHeight) {
+    // Apply target padding based on position first, so the clamp below has
+    // the final say and the shift can't push the tooltip past an edge
+    _applyTargetPadding();
+
     final screenStart = Offset(
-      screenEdgePadding + showcaseOffset.dx,
-      screenEdgePadding + showcaseOffset.dy,
+      _leftEdgePadding + showcaseOffset.dx,
+      _topEdgePadding + showcaseOffset.dy,
     );
 
     final screenEnd = Offset(
       screenSize.width -
           _toolTipBoxSize.width -
-          screenEdgePadding +
+          _rightEdgePadding +
           showcaseOffset.dx,
-      screenSize.height - tooltipHeight - screenEdgePadding + showcaseOffset.dy,
+      screenSize.height -
+          tooltipHeight -
+          _bottomEdgePadding +
+          showcaseOffset.dy,
     );
 
     // Ensure tooltip stays within horizontal screen bounds
@@ -654,9 +679,6 @@ class _RenderPositionDelegate extends RenderBox
     _yOffset = screenStart.dy > screenEnd.dy
         ? screenStart.dy
         : _yOffset.clamp(screenStart.dy, screenEnd.dy);
-
-    // Apply target padding based on position
-    _applyTargetPadding();
   }
 
   /// Apply target padding based on tooltip position
@@ -856,21 +878,21 @@ class _RenderPositionDelegate extends RenderBox
             targetTooltipGap +
             arrowPadding -
             showcaseOffset.dy <=
-        screenSize.height - screenEdgePadding;
+        screenSize.height - _bottomEdgePadding;
 
     final isTop = targetPosition.dy -
             totalHeight -
             targetTooltipGap -
             arrowPadding -
             showcaseOffset.dy >=
-        screenEdgePadding;
+        _topEdgePadding;
 
     final isLeft = targetPosition.dx -
             tooltipSize.width -
             targetTooltipGap -
             arrowPadding -
             showcaseOffset.dx >=
-        screenEdgePadding;
+        _leftEdgePadding;
 
     final isRight = targetPosition.dx +
             targetSize.width +
@@ -878,7 +900,7 @@ class _RenderPositionDelegate extends RenderBox
             targetTooltipGap +
             arrowPadding -
             showcaseOffset.dx <=
-        screenSize.width - screenEdgePadding;
+        screenSize.width - _rightEdgePadding;
 
     return _SuitablePosition(
       isBottom: isBottom,
